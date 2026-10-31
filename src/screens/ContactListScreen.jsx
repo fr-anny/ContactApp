@@ -1,27 +1,68 @@
-import React, { useState, useCallback } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useState, useEffect } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import ContactCard from '../components/ContactCard';
-import { getContacts } from '../data/contacts';
+import { getContacts, deleteContact } from '../data/contacts';
 import { globalStyles } from '../styles/globalStyles';
 import { useTheme } from '../theme/ThemeContext';
 
 export default function ContactListScreen({ navigation }) {
   const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
   const { colors } = useTheme();
 
-  useFocusEffect(
-    useCallback(() => {
-      const currentContacts = getContacts();
-      const q = query.trim().toLowerCase();
-      const filtered = currentContacts.filter((c) =>
-        [c.nombre, c.apellido, c.correo, c.telefono, c.tipo].some((v) =>
-          String(v).toLowerCase().includes(q)
-        )
-      );
-      setList(filtered);
-    }, [query])
+  const loadContacts = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getContacts();
+      console.log("Datos recibidos del servidor:", data);
+      setList(data);
+    } catch (err) {
+      console.error("Error al cargar contactos:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Listener de navegación (focus)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      console.log("reload focus");
+      loadContacts();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  // Función para eliminar contacto vía DELETE
+  const handleDelete = async (id) => {
+    try {
+      await deleteContact(id);
+      loadContacts(); // Recarga la lista desde la API
+    } catch (err) {
+      console.error("Error al eliminar contacto:", err);
+      Alert.alert("Error", "No se pudo eliminar el contacto.");
+    }
+  };
+
+  // Filtrado para la barra de búsqueda
+  const q = query.trim().toLowerCase();
+  const filteredList = list.filter((c) =>
+    [c.nombre, c.apellido, c.correo, c.telefono, c.tipo].some((v) =>
+      String(v || '').toLowerCase().includes(q)
+    )
   );
 
   const openContact = (item) => {
@@ -37,7 +78,7 @@ export default function ContactListScreen({ navigation }) {
             backgroundColor: colors?.inputBg || '#ffffff',
             borderColor: colors?.border || '#e2e8f0',
             color: colors?.text || '#000000',
-          }
+          },
         ]}
         placeholder="Buscar contacto..."
         placeholderTextColor={colors?.subText || "#94a3b8"}
@@ -45,17 +86,39 @@ export default function ContactListScreen({ navigation }) {
         onChangeText={setQuery}
       />
 
-      <FlatList
-        data={list}
-        keyExtractor={(c) => c.id}
-        renderItem={({ item }) => (
-          <ContactCard contact={item} onPress={() => openContact(item)} />
-        )}
-        ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors?.subText || '#64748b' }]}>No hay contactos.</Text>
-        }
-        contentContainerStyle={styles.list}
-      />
+      {loading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={[styles.statusText, { color: colors?.text || '#000000' }]}>
+            Cargando contactos...
+          </Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={loadContacts}>
+            <Text style={styles.retryText}>Reintentar</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredList}
+          keyExtractor={(c) => String(c.id)}
+          renderItem={({ item }) => (
+            <ContactCard
+              contact={item}
+              onPress={() => openContact(item)}
+              onDelete={() => handleDelete(item.id)}
+            />
+          )}
+          ListEmptyComponent={
+            <Text style={[styles.empty, { color: colors?.subText || '#64748b' }]}>
+              No hay contactos.
+            </Text>
+          }
+          contentContainerStyle={styles.list}
+        />
+      )}
 
       <Pressable
         style={[globalStyles.button, styles.addButton]}
@@ -93,5 +156,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563eb',
     borderRadius: 8,
     paddingVertical: 14,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusText: {
+    marginTop: 12,
+    fontSize: 15,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 15,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  retryText: {
+    color: '#ffffff',
+    fontWeight: '600',
   },
 });

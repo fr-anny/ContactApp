@@ -8,14 +8,29 @@ export default function EditContactScreen({ route, navigation }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    let contact = getContact(id);
-    setCurrentContact(contact);
-    setLoaded(true);
+    const fetchContact = async () => {
+      try {
+        const contact = await getContact(id);
+        setCurrentContact(contact);
+      } catch (error) {
+        console.error('Error al obtener el contacto:', error);
+      } finally {
+        setLoaded(true);
+      }
+    };
+
+    if (id) {
+      fetchContact();
+    }
   }, [id]);
 
-  const handleUpdate = (data) => {
-    updateContact(id, data);
-    navigation.goBack();
+  const handleUpdate = async (data) => {
+    try {
+      await updateContact(id, data);
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error al actualizar el contacto:', error);
+    }
   };
 
   if (!loaded) return null;
